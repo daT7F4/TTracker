@@ -46,11 +46,11 @@ void fileHandler::resample(const char* file) {
 
     f.seek(40);
     size_t size;
-    f.readBytes(reinterpret_cast<char*>(&size), 4);
+    f.readBytes((char*)&size, 4);
 
     rawAudio = static_cast<int16_t*>(heap_caps_malloc(size, MALLOC_CAP_SPIRAM));
     delta = static_cast<int16_t*>(heap_caps_malloc(size, MALLOC_CAP_SPIRAM));
-    f.readBytes(reinterpret_cast<char*>(rawAudio), size);
+    f.readBytes((char*)rawAudio, size);
     f.close();
 }
 
@@ -70,104 +70,117 @@ void fileHandler::loadProject(const char* file) {
     }
 
     uint8_t version = f.read();
-    f.readBytes(reinterpret_cast<char*>(&songData::BPM), 2);
+    f.readBytes((char*)&songData::BPM, 2);
     songData::RPB = f.read();
     uint8_t trackCount = f.read();
     for (uint8_t trackIdx = 0; trackIdx < trackCount; trackIdx++) {
         uint16_t instrumentType = 0;
-        f.readBytes(reinterpret_cast<char*>(&instrumentType), 2);
+        f.readBytes((char*)&instrumentType, 2);
+        addLog("Reading track #" + String(trackIdx) + " type #" +
+               String(instrumentType) + "...");
         allocateInstrument(trackIdx, instrumentType);
-        uint32_t trackDataLength = 0;
-        f.readBytes(reinterpret_cast<char*>(&trackDataLength), 4);
-        for(uint32_t i = 0; i < trackDataLength; i++){
+        uint32_t instrumentDataLength = 0;
+        f.readBytes((char*)&instrumentDataLength, 4);
+        for (uint32_t i = 0; i < instrumentDataLength; i++) {
+            popup("Reading instrument data", i, instrumentDataLength);
             uint32_t id = 0;
-            f.readBytes(reinterpret_cast<char*>(&id), 2);
-            String name = f.readString();
+            f.readBytes((char*)&id, 2);
             uint32_t size = 0;
-            f.readBytes(reinterpret_cast<char*>(&size), 4);
-            void* data = nullptr;
-            f.readBytes(reinterpret_cast<char*>(data), size);
-            specialVariable variable;
-            specialVariable var;
-                var.value.visit(
-                    [&](uint8_t &v){v = reinterpret_cast<uint8_t>(data);},
-                    [&](int8_t &v){v = reinterpret_cast<int8_t>(data);},
-                    [&](uint16_t &v){v = reinterpret_cast<uint16_t>(data);},
-                    [&](int16_t &v){v = reinterpret_cast<int16_t>(data);},
-                    [&](uint32_t &v){v = reinterpret_cast<uint32_t>(data);},
-                    [&](int32_t &v){v = reinterpret_cast<int32_t>(data);}
-                    // to come
-                );
-                tracks[trackIdx].instrument->customVariable(data);
-            variable.name = name;
-            tracks[trackIdx].instrument->loadVariable(id, variable);
+            f.readBytes((char*)&size, 4);
+            auto it = tracks[trackIdx].instrument->data.find(id);
+            if (it != tracks[trackIdx].instrument->data.end()) {
+                if (size != it->second.size) {
+                    addLog("Variable " + it->second.name + "(" +
+                           String(it->first) + ")" +
+                           " doesn't match size in file.");
+                    f.seek(f.position() + size);
+                } else {
+                    f.readBytes((char*)it->second.ptr, size);
+                }
+            } else {
+                f.seek(f.position() + size);
+                addLog("Variable " + it->second.name + "(" + String(it->first) +
+                       ")" + " doesn't exist in the instrument.");
+            }
         }
         uint8_t effectCount = f.read();
         for (uint8_t effectIdx = 0; effectIdx < effectCount; effectIdx++) {
+            if (effectIdx > maxEffects) {
+                addLog("Too many effects in track (" + String(effectCount) +
+                       "), skipping...");
+                break;
+            }
             uint16_t effectType = 0;
-            f.readBytes(reinterpret_cast<char*>(&effectType), 2);
+            f.readBytes((char*)&effectType, 2);
+            addLog("Reading effect #" + String(effectIdx) + " type #" +
+                   String(effectType) + "...");
             allocateEffect(trackIdx, effectIdx, effectType);
             uint32_t effectDataLength = 0;
-            f.readBytes(reinterpret_cast<char*>(&effectDataLength), 4);
-            for(uint32_t i = 0; i < effectDataLength; i++){
+            f.readBytes((char*)&effectDataLength, 4);
+            for (uint32_t i = 0; i < effectDataLength; i++) {
+                popup("Reading effect data", i, effectDataLength);
                 uint32_t id = 0;
-                f.readBytes(reinterpret_cast<char*>(&id), 2);
+                f.readBytes((char*)&id, 2);
                 String name = f.readString();
                 uint32_t size = 0;
-                f.readBytes(reinterpret_cast<char*>(&size), 4);
-                void* data = malloc(size);
-                f.readBytes(reinterpret_cast<char*>(data), size);
-                specialVariable var;
-                var.value.visit(
-                    [&](uint8_t &v){v = reinterpret_cast<uint8_t>(data);},
-                    [&](int8_t &v){v = reinterpret_cast<int8_t>(data);},
-                    [&](uint16_t &v){v = reinterpret_cast<uint16_t>(data);},
-                    [&](int16_t &v){v = reinterpret_cast<int16_t>(data);},
-                    [&](uint32_t &v){v = reinterpret_cast<uint32_t>(data);},
-                    [&](int32_t &v){v = reinterpret_cast<int32_t>(data);}
-                    // to come
-                );
-                tracks[trackIdx].effect[effectIdx].customVariable(data);
-                var.name = name;
-                tracks[trackIdx].effect[effectIdx].loadVariable(id, var);
+                f.readBytes((char*)&size, 4);
+                auto it = tracks[trackIdx].effects[effectIdx]->data.find(id);
+                if (it != tracks[trackIdx].effects[effectIdx]->data.end()) {
+                    if (size != it->second.size) {
+                        addLog("Variable " + it->second.name + "(" +
+                               String(it->first) + ")" +
+                               " doesn't match size in file.");
+                        f.seek(f.position() + size);
+                    } else {
+                        f.readBytes((char*)it->second.ptr, size);
+                    }
+                } else {
+                    f.seek(f.position() + size);
+                    addLog("Variable " + it->second.name + "(" +
+                           String(it->first) + ")" +
+                           " doesn't exist in the effect.");
+                }
             }
-            f.readBytes(reinterpret_cast<char*>(tracks[trackIdx].orderTable),
-                        256);
+            f.readBytes((char*)tracks[trackIdx].orderTable, 256);
             uint8_t patternCount = f.read();
-            tracks[trackIdx].patterns = static_cast<pattern*>(heap_caps_malloc(
-                sizeof(pattern) * patternCount, MALLOC_CAP_SPIRAM));
             for (uint8_t patternIdx = 0; patternIdx < patternCount;
                  patternIdx++) {
+                popup("Reading patterns", patternIdx, patternCount);
                 uint32_t patternLength = 0;
-                f.readBytes(reinterpret_cast<char*>(&patternLength), 2);
-                tracks[trackIdx].patterns[patternIdx].length = patternLength;
-                uint32_t cellCount =
-                    patternLength * tracks[trackIdx].instrument->maxVoices;
-                tracks[trackIdx].patterns[patternIdx].cells =
-                    static_cast<cell*>(heap_caps_malloc(
-                        sizeof(cell) * cellCount, MALLOC_CAP_SPIRAM));
-                for (uint32_t i = 0; i < cellCount; i++) {
-                    uint8_t b = f.read();
-                    cell c;
-                    if (b & 0x80) {
-                        uint8_t r = 1;
-                        if (b & 0x10) {
-                            r = f.read();
+                f.readBytes((char*)&patternLength, 2);
+                if (patternLength) {
+                    tracks[trackIdx].patterns[patternIdx].length =
+                        patternLength;
+                    uint32_t cellCount =
+                        patternLength * tracks[trackIdx].instrument->maxVoices;
+                    tracks[trackIdx].patterns[patternIdx].cells =
+                        static_cast<cell*>(heap_caps_malloc(
+                            sizeof(cell) * cellCount, MALLOC_CAP_SPIRAM));
+                    for (uint32_t i = 0; i < cellCount; i++) {
+                        uint8_t b = f.read();
+                        cell c;
+                        if (b & 0x80) {
+                            uint8_t r = 1;
+                            if (b & 0x10) r = f.read();
+                            c.note = b & 0x1 ? f.read() : 0;
+                            c.velocity = b & 0x2 ? f.read() : 0;
+                            c.effect = b & 0x4 ? f.read() : 0;
+                            c.amount = b & 0x8 ? f.read() : 0;
+                            for (uint8_t j = 0; j < r; j++)
+                                tracks[trackIdx]
+                                    .patterns[patternIdx]
+                                    .cells[i++] = c;
+                        } else {
+                            c.note = b;
+                            c.velocity = f.read();
+                            c.effect = f.read();
+                            c.amount = f.read();
+                            tracks[trackIdx].patterns[patternIdx].cells[i] = c;
                         }
-                        c.note = b & 0x1 ? f.read() : 0;
-                        c.velocity = b & 0x2 ? f.read() : 0;
-                        c.effect = b & 0x4 ? f.read() : 0;
-                        c.amount = b & 0x8 ? f.read() : 0;
-                        for (uint8_t j = 0; j < r; j++)
-                            tracks[trackIdx].patterns[patternIdx].cells[i++] =
-                                c;
-                    } else {
-                        c.note = b;
-                        c.velocity = f.read();
-                        c.effect = f.read();
-                        c.amount = f.read();
-                        tracks[trackIdx].patterns[patternIdx].cells[i] = c;
                     }
+                } else {
+                    tracks[trackIdx].patterns[patternIdx].cells = nullptr;
+                    tracks[trackIdx].patterns[patternIdx].length = 0;
                 }
             }
         }
@@ -175,21 +188,102 @@ void fileHandler::loadProject(const char* file) {
     f.close();
 }
 
-void fileHandler::saveProject(const char *file){
-    if(SD_MMC.exists(file)){
+void fileHandler::saveProject(const char* file) {
+    if (SD_MMC.exists(file)) {
         SD_MMC.remove(file);
     }
     File f = SD_MMC.open(file, FILE_WRITE, true);
-    if(!f){
+    if (!f) {
         stop("Couldn't open project file!", "fileHandler::saveProject");
         f.close();
         return;
     }
     f.write(FILE_VERSION);
-    f.write(reinterpret_cast<uint8_t*>(&songData::BPM), 2);
+    f.write((uint8_t*)&songData::BPM, sizeof(songData::BPM));
     f.write(songData::RPB);
     f.write(totalTracks);
-    for(auto t : tracks){
+    for (auto t : tracks) {
         f.write(t.instrument->type);
+        size_t size = t.instrument->data.size();
+        f.write((uint8_t*)size, sizeof(size_t));
+        for (auto it : t.instrument->data) {
+            f.write((uint8_t*)&it.first, sizeof(it.first));
+            f.write((uint8_t*)&it.second.size, sizeof(it.second.size));
+            f.write((uint8_t*)&it.second.ptr, sizeof(it.second.size));
+        }
+        f.write(maxEffects);
+        for (auto e : t.effects) {
+            if (e != nullptr) {
+                f.write((uint8_t*)&e->type, sizeof(e->type));
+                size_t size = e->data.size();
+                f.write((uint8_t*)&size, sizeof(size_t));
+                for (auto it : e->data) {
+                    f.write((uint8_t*)&it.first, sizeof(it.first));
+                    f.write((uint8_t*)&it.second.size, sizeof(it.second.size));
+                    f.write((uint8_t*)&it.second.ptr, sizeof(it.second.size));
+                }
+            } else {
+                f.write(0);
+            }
+        }
+        f.write(t.orderTable, sizeof(t.orderTable));
+        for (auto p : t.patterns) {
+            uint8_t repeat = 0;
+            cell prev = cell(0, 0, 0, 0);
+            cell curr = p.cells[0];
+            for (size_t i = 1; i < t.instrument->maxVoices * p.length; i++) {
+                prev = curr;
+                curr = p.cells[i];
+                if (curr.note == prev.note && 
+                    curr.velocity == prev.velocity &&
+                    curr.effect == prev.velocity &&
+                    curr.amount == prev.amount) {
+                    repeat++;
+                } else {
+                    if (repeat) {
+                        size_t temp = 0x90;
+                        if(p.cells[i].note){
+                            temp |= 0x1;
+                            f.write(p.cells[i].note);
+                        }
+                        if(p.cells[i].velocity){
+                            temp |= 0x2;
+                            f.write(p.cells[i].velocity);
+                        }
+                        if(p.cells[i].effect){
+                            temp |= 0xC;
+                            f.write(p.cells[i].effect);
+                        }
+                        if(p.cells[i].amount){
+                            temp |= 0x8;
+                            f.write(p.cells[i].amount);
+                        }
+                        f.write(temp);
+                        f.write(repeat);
+                    } else{
+                        size_t temp = 0;
+                        if(p.cells[i].note){
+                            temp |= 0x1;
+                            f.write(p.cells[i].note);
+                        }
+                        if(p.cells[i].velocity){
+                            temp |= 0x2;
+                            f.write(p.cells[i].velocity);
+                        }
+                        if(p.cells[i].effect){
+                            temp |= 0xC;
+                            f.write(p.cells[i].effect);
+                        }
+                        if(p.cells[i].amount){
+                            temp |= 0x8;
+                            f.write(p.cells[i].amount);
+                        }
+                        if(temp != 0xF)
+                            f.write(temp | 0x80);
+                    }
+                    repeat = 0;
+                }
+            }
+        }
     }
 }

@@ -15,26 +15,27 @@ void audioInterface::allocateBuffers() {
     if (_buffer2 != nullptr) heap_caps_free(_buffer2);
 
     _buffer1 = (int16_t*)heap_caps_aligned_alloc(
-        64, _ceilSize << 1, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        64, _ceilSize << 1,
+        MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     _buffer2 = (int16_t*)heap_caps_aligned_alloc(
-        64, _ceilSize << 1, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    
+        64, _ceilSize << 1,
+        MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 
     uint8_t i = 0;
     for (auto t : tracks) {
         t.instrument->resize(_ceilSize << 1);
-        t.effect->resize(_ceilSize << 1);
+        for (uint8_t i = 0; i < 1; i++) t.effects[i]->resize(_ceilSize << 1);
         popup("Resizing buffers", i, 8);
         i++;
     }
 }
 
-void audioInterface::startTask(TaskHandle_t &handle){
+void audioInterface::startTask(TaskHandle_t& handle) {
     xTaskCreate(bridge, "Audio Interface", 8192, this, 5, &handle);
 }
 
-void audioInterface::bridge(void *p){
-    audioInterface *instance = static_cast<audioInterface*>(p);
+void audioInterface::bridge(void* p) {
+    audioInterface* instance = static_cast<audioInterface*>(p);
     instance->loop();
     vTaskDelete(NULL);
 }
@@ -54,7 +55,8 @@ void audioInterface::loop() {
         updateVoices();
         for (auto t : tracks) {
             t.instrument->render(_renderSize);
-            t.effect->process(t.instrument->buffer, _renderSize);
+            for (uint8_t i = 0; i < 1; i++)
+                t.effects[i]->process(t.instrument->buffer, _renderSize);
             if (_bufferSelect)
                 dsps_add_s16_ansi(t.instrument->buffer, _buffer2, _buffer2,
                                   _renderSize, 1, 1, 1, 0);

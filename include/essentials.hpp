@@ -3,9 +3,6 @@
 #include <Arduino.h>
 
 #include "fpv.hpp"
-#include "whatever.hpp"
-
-using any = whatever<heapAllocatedTag>;
 
 struct env {
     fpv getEnvelope(fpv pressTimestamp, fpv releaseTimestamp);
@@ -15,8 +12,8 @@ struct env {
     fpv r;
 };
 
-struct specialVariable{
+struct storedVariable{
+    void* ptr;
+    size_t size;
     String name;
-    uint32_t type;
-    any value;
 };

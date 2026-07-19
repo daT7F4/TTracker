@@ -7,14 +7,11 @@
 
 struct effectBase{
     effectBase() = default;
-    virtual ~effectBase() = default;
-    virtual void resize(size_t bufferSize);
-    virtual void process(int16_t* in, size_t bufferSize);
-    virtual void customVariable(void* data);
-
-    void loadVariable(uint16_t id, specialVariable var);
+    virtual ~effectBase() = 0;
+    virtual void resize(size_t bufferSize) = 0;
+    virtual void process(int16_t* in, size_t bufferSize) = 0;
 
     uint16_t type = 0;
 
-    std::map<uint16_t, specialVariable> data;
+    std::map<uint16_t, storedVariable> data;
 };
