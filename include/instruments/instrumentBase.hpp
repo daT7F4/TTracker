@@ -13,6 +13,7 @@ struct instrumentBase{
     virtual ~instrumentBase() = 0;
     virtual void resize(size_t bufferSize) = 0;
     virtual void render(size_t renderSize) = 0;
+    virtual void drawUI() = 0;
     virtual void resetVoices() = 0;
     virtual void pressVoice(uint8_t idx, uint8_t pitch, uint8_t velocity) = 0;
     virtual void releaseVoice(uint8_t idx) = 0;

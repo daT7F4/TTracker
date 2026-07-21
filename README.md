@@ -8,3 +8,4 @@ As of currently, information for developing custom software for this is specifie
 ## Credits
 Robtilaart - MCP23S17 library\
 Lovyan09 - LovyanGFX library\
+theuser27 - Fixed point implementation

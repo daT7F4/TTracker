@@ -10,18 +10,12 @@ The code is designed to utilize the standard functions defined in the base so th
 Something very important to remember too, you as the developer is responsible to show dopamine inducing data to the user, so that they know something is happening, even if it's bad.
 By that i mean, use the functions in the `globalCalls.hpp` file. There you will find everything you need to report errors to the user, primarly through the display, if it works of course.
 
-Something also good to remember is that the audio data is stereo, that means that the data goes like this: left sample, right sample, left sample, right sample... If you don't remember you will get a stereo sound depending on the sound you're producing but it will be at double the frequency.
+Something also good to remember is that the audio data is stereo, that means that the data goes like this: left sample, right sample, left sample, right sample... If you don't remember you will get a stereo sound and it will also be double the frequency.
 
 ### The constructor
-As you see, there is a `std::map` called `data`, that is where all your data you want to save exists.
-This should be used for stuff that doesn't change per sample.
-It isn't illegal but not recommended because it changes anyway.
-So the constructor should be used to initialize the nessecary variables for the instrument/effect.
-**This is very important to remember:** Every variable has to have a unique ID being specified by the `uint16_t` in the map. 
-These ID's **DO NOT** change between instrument versions.
-This is because memory can be overwritten if the developer isn't keeping the same structure.
-So before publishing your instrument/effect, pick a neat structure that you like. 
-The constructor should be also used to allocate other arrays or buffers that your instrument/effect might be using.
+If you're already here you are most definetly familiar with C++ constructors, if not, search it up.
+If you do know what it is you know what to do, nothing special here.
+This is always called when allocating.
 
 ### The destructor
 This is quite self explanatory and is just for when the instrument/effect is replaced for a new one at runtime.
@@ -33,8 +27,8 @@ This function is called when the buffers need to be resized.
 This happens only because of a tempo change because the buffer size is dependent on the samples that fit inside a single row.
 The size is specified in samples for both channels combined.
 
-### `customVariable(void* data)`
-This function is for loading custom variables from the project file. There is the standard `whatever` lambdas but if the developer of the given instrument/effect would like to store their own data types, loading of those data types should be specified here. An example of this type of loading can be shown in the `basicInstrument.cpp` file.
+### `renderUI()`
+This function is called when the current instrument/effect needs to render its UI (duh).
 
 ### `render(size_t renderSize)` (Instrument only)
 This function is called when rendering of the instrument should happen. 

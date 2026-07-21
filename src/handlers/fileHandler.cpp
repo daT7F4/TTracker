@@ -45,8 +45,8 @@ void fileHandler::resample(const char* file) {
     }
 
     f.seek(40);
-    size_t size;
-    f.readBytes((char*)&size, 4);
+    uint32_t size;
+    f.readBytes((char*)&size, sizeof(size));
 
     rawAudio = static_cast<int16_t*>(heap_caps_malloc(size, MALLOC_CAP_SPIRAM));
     delta = static_cast<int16_t*>(heap_caps_malloc(size, MALLOC_CAP_SPIRAM));
@@ -76,12 +76,12 @@ void fileHandler::loadProject(const char* file) {
     for (uint8_t trackIdx = 0; trackIdx < trackCount; trackIdx++) {
         uint16_t instrumentType = 0;
         f.readBytes((char*)&instrumentType, 2);
-        addLog("Reading track #" + String(trackIdx) + " type #" +
-               String(instrumentType) + "...");
+        addLog("Reading track #" + String(trackIdx) + "...");
         allocateInstrument(trackIdx, instrumentType);
         uint32_t instrumentDataLength = 0;
         f.readBytes((char*)&instrumentDataLength, 4);
         for (uint32_t i = 0; i < instrumentDataLength; i++) {
+            addLog("Instrument type #" + String(instrumentType));
             popup("Reading instrument data", i, instrumentDataLength);
             uint32_t id = 0;
             f.readBytes((char*)&id, 2);
@@ -129,7 +129,7 @@ void fileHandler::loadProject(const char* file) {
                     if (size != it->second.size) {
                         addLog("Variable " + it->second.name + "(" +
                                String(it->first) + ")" +
-                               " doesn't match size in file.");
+                               " doesn't match size in file, skipping....");
                         f.seek(f.position() + size);
                     } else {
                         f.readBytes((char*)it->second.ptr, size);
@@ -138,7 +138,7 @@ void fileHandler::loadProject(const char* file) {
                     f.seek(f.position() + size);
                     addLog("Variable " + it->second.name + "(" +
                            String(it->first) + ")" +
-                           " doesn't exist in the effect.");
+                           " doesn't exist in the effect, skipping...");
                 }
             }
             f.readBytes((char*)tracks[trackIdx].orderTable, 256);
@@ -185,6 +185,7 @@ void fileHandler::loadProject(const char* file) {
             }
         }
     }
+    addLog("Read " + String(f.position()) + " bytes");
     f.close();
 }
 
@@ -202,21 +203,30 @@ void fileHandler::saveProject(const char* file) {
     f.write((uint8_t*)&songData::BPM, sizeof(songData::BPM));
     f.write(songData::RPB);
     f.write(totalTracks);
+    uint8_t trackIdx = 0;
     for (auto t : tracks) {
-        f.write(t.instrument->type);
-        size_t size = t.instrument->data.size();
-        f.write((uint8_t*)size, sizeof(size_t));
-        for (auto it : t.instrument->data) {
-            f.write((uint8_t*)&it.first, sizeof(it.first));
-            f.write((uint8_t*)&it.second.size, sizeof(it.second.size));
-            f.write((uint8_t*)&it.second.ptr, sizeof(it.second.size));
+        addLog("Saving track #" + String(trackIdx) + "...");
+        if (t.instrument != nullptr) {
+            addLog("Instrument type #" + String(t.instrument->type));
+            f.write(t.instrument->type);
+            uint32_t size = t.instrument->data.size();
+            f.write((uint8_t*)size, sizeof(size));
+            for (auto it : t.instrument->data) {
+                f.write((uint8_t*)&it.first, sizeof(it.first));
+                f.write((uint8_t*)&it.second.size, sizeof(it.second.size));
+                f.write((uint8_t*)&it.second.ptr, sizeof(it.second.size));
+            }
+        } else {
+            f.write(0);
+            f.write(0);
         }
         f.write(maxEffects);
         for (auto e : t.effects) {
             if (e != nullptr) {
+                addLog("Effect type #" + String(e->type));
                 f.write((uint8_t*)&e->type, sizeof(e->type));
-                size_t size = e->data.size();
-                f.write((uint8_t*)&size, sizeof(size_t));
+                uint32_t size = e->data.size();
+                f.write((uint8_t*)&size, sizeof(size));
                 for (auto it : e->data) {
                     f.write((uint8_t*)&it.first, sizeof(it.first));
                     f.write((uint8_t*)&it.second.size, sizeof(it.second.size));
@@ -224,65 +234,46 @@ void fileHandler::saveProject(const char* file) {
                 }
             } else {
                 f.write(0);
+                f.write(0);
             }
         }
         f.write(t.orderTable, sizeof(t.orderTable));
+        f.write(255);
         for (auto p : t.patterns) {
-            uint8_t repeat = 0;
-            cell prev = cell(0, 0, 0, 0);
-            cell curr = p.cells[0];
-            for (size_t i = 1; i < t.instrument->maxVoices * p.length; i++) {
-                prev = curr;
-                curr = p.cells[i];
-                if (curr.note == prev.note && 
-                    curr.velocity == prev.velocity &&
-                    curr.effect == prev.velocity &&
-                    curr.amount == prev.amount) {
-                    repeat++;
-                } else {
-                    if (repeat) {
-                        size_t temp = 0x90;
-                        if(p.cells[i].note){
-                            temp |= 0x1;
-                            f.write(p.cells[i].note);
+            if(p.length != 0){
+                uint8_t repeat = 0;
+                cell prev = cell(0, 0, 0, 0);
+                cell curr = p.cells[0];
+                for (size_t i = 1; i < t.instrument->maxVoices * p.length; i++) {
+                    prev = curr;
+                    curr = p.cells[i];
+                    if (curr.note == prev.note && curr.velocity == prev.velocity &&
+                        curr.effect == prev.velocity &&
+                        curr.amount == prev.amount || repeat == 255) {
+                        repeat++;
+                    } else {
+                        if (repeat != 0) {
+                            f.write(0x90 | (p.cells[i].note != 0) ? 0x1 : 0
+                                        | (p.cells[i].velocity != 0) ? 0x2 : 0
+                                        | (p.cells[i].effect != 0) ? 0xC : 0
+                                        | (p.cells[i].amount != 0) ? 0x8 : 0);
+                            f.write(repeat);
+                        } else {
+                            uint8_t temp = (p.cells[i].note != 0) ? 0x1 : 0
+                                        | (p.cells[i].velocity != 0) ? 0x2 :0
+                                        | (p.cells[i].effect != 0) ? 0xC : 0
+                                        | (p.cells[i].amount != 0) ? 0x8 : 0;
+                            if (temp != 0xF) f.write(temp | 0x80);
                         }
-                        if(p.cells[i].velocity){
-                            temp |= 0x2;
-                            f.write(p.cells[i].velocity);
-                        }
-                        if(p.cells[i].effect){
-                            temp |= 0xC;
-                            f.write(p.cells[i].effect);
-                        }
-                        if(p.cells[i].amount){
-                            temp |= 0x8;
-                            f.write(p.cells[i].amount);
-                        }
-                        f.write(temp);
-                        f.write(repeat);
-                    } else{
-                        size_t temp = 0;
-                        if(p.cells[i].note){
-                            temp |= 0x1;
-                            f.write(p.cells[i].note);
-                        }
-                        if(p.cells[i].velocity){
-                            temp |= 0x2;
-                            f.write(p.cells[i].velocity);
-                        }
-                        if(p.cells[i].effect){
-                            temp |= 0xC;
-                            f.write(p.cells[i].effect);
-                        }
-                        if(p.cells[i].amount){
-                            temp |= 0x8;
-                            f.write(p.cells[i].amount);
-                        }
-                        if(temp != 0xF)
-                            f.write(temp | 0x80);
+                        if (p.cells[i].note != 0) f.write(p.cells[i].note);
+                        if (p.cells[i].velocity != 0) f.write(p.cells[i].velocity);
+                        if (p.cells[i].effect != 0) f.write(p.cells[i].effect);
+                        if (p.cells[i].amount != 0) f.write(p.cells[i].amount);
+                        repeat = 0;
                     }
-                    repeat = 0;
                 }
+            } else{
+                f.write(0);
             }
         }
     }

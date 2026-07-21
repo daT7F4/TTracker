@@ -10,6 +10,7 @@ struct effectBase{
     virtual ~effectBase() = 0;
     virtual void resize(size_t bufferSize) = 0;
     virtual void process(int16_t* in, size_t bufferSize) = 0;
+    virtual void drawUI() = 0;
 
     uint16_t type = 0;
 
